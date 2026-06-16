@@ -1,0 +1,14 @@
+services:
+
+  frontend:
+    build: .
+    container_name: liquidador_frontend
+    ports:
+      - "3000:80"
+    restart: unless-stopped
+    networks:
+      - backend-liquidador_backend_liquidador_network
+
+networks:
+  backend-liquidador_backend_liquidador_network:
+    external: true
