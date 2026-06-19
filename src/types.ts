@@ -19,6 +19,11 @@ export interface Documento {
   subido_en: string
 }
 
+export interface DocumentoConCarpeta extends Documento {
+  caso_id: string
+  caso_pk: string
+}
+
 export interface ResultadoIA {
   paso: 'A' | 'B' | 'C'
   paso_display: string
@@ -37,4 +42,10 @@ export interface CarpetaDetalle {
   mensaje_error: string
   documentos: Documento[]
   resultados: ResultadoIA[]
+}
+
+export interface UserProfile {
+  email: string
+  nombre: string
+  rol: 'Admin' | 'Liquidador'
 }

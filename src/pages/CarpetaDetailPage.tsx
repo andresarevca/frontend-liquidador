@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { api } from '../api/client'
-import { StatusBadge } from '../components/StatusBadge'
-import type { CarpetaDetalle, Documento, ResultadoIA } from '../types'
+import { ChevronLeft } from 'lucide-react'
 
-type Tab = 'documentos' | 'A' | 'B' | 'C'
+import { api } from '@/api/client'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { StatusBadge } from '@/components/StatusBadge'
+import type { CarpetaDetalle, Documento, ResultadoIA } from '@/types'
 
 // ----------------------------------------------------------------------------
 // Documentación complementaria
@@ -23,29 +26,20 @@ const DOCS_ESPERADOS: Array<{ nombre: string; boolKey: string | null; countKey: 
   { nombre: 'Fotos del evento/daños', boolKey: null, countKey: 'fotos_evento_cantidad' },
 ]
 
-type DocEstado = 'ENTREGADO' | 'NO ENTREGADO'
-
-function computeDocumentacion(
-  pasoB: ResultadoIA,
-  documentos: Documento[],
-): Array<{ nombre: string; estado: DocEstado }> {
-  const doc = ((pasoB.resultado as Record<string, unknown>).documentacion ?? {}) as Record<string, unknown>
-  const nombresEntregados = documentos.map((d) => d.nombre_archivo.toLowerCase())
-
+function computeDocumentacion(pasoB: ResultadoIA, documentos: Documento[]) {
+  const doc = ((pasoB.resultado as Record<string, unknown>).documentacion ?? {}) as Record<
+    string,
+    unknown
+  >
+  const nombres = documentos.map((d) => d.nombre_archivo.toLowerCase())
   return DOCS_ESPERADOS.map(({ nombre, boolKey, countKey }) => {
-    let estado: DocEstado
-    if (boolKey !== null && doc[boolKey] === true) {
-      estado = 'ENTREGADO'
-    } else if (boolKey !== null && doc[boolKey] === false) {
-      estado = 'NO ENTREGADO'
-    } else if (countKey !== null && typeof doc[countKey] === 'number' && (doc[countKey] as number) > 0) {
-      estado = 'ENTREGADO'
-    } else if (nombresEntregados.some((n) => n.includes(nombre.toLowerCase().split(' ')[0]))) {
-      estado = 'ENTREGADO'
-    } else {
-      estado = 'NO ENTREGADO'
-    }
-    return { nombre, estado }
+    let entregado = false
+    if (boolKey && doc[boolKey] === true) entregado = true
+    else if (boolKey && doc[boolKey] === false) entregado = false
+    else if (countKey && typeof doc[countKey] === 'number' && (doc[countKey] as number) > 0)
+      entregado = true
+    else if (nombres.some((n) => n.includes(nombre.toLowerCase().split(' ')[0]))) entregado = true
+    return { nombre, entregado }
   })
 }
 
@@ -62,12 +56,12 @@ function formatDateTime(iso: string) {
 function ResultadoPanel({ resultado }: { resultado: ResultadoIA }) {
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between text-xs text-gray-400">
+      <div className="flex items-center justify-between text-xs text-muted-foreground">
         <span>{resultado.paso_display}</span>
         <span>Generado: {formatDateTime(resultado.generado_en)}</span>
       </div>
-      <div className="bg-gray-900 rounded-lg p-5 overflow-auto max-h-[560px]">
-        <pre className="text-green-300 text-xs leading-relaxed whitespace-pre-wrap">
+      <div className="max-h-[560px] overflow-auto rounded-lg bg-muted p-5">
+        <pre className="whitespace-pre-wrap font-mono text-xs leading-relaxed text-foreground">
           {JSON.stringify(resultado.resultado, null, 2)}
         </pre>
       </div>
@@ -80,8 +74,8 @@ export function CarpetaDetailPage() {
   const [carpeta, setCarpeta] = useState<CarpetaDetalle | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [tab, setTab] = useState<Tab>('documentos')
   const [reprocesando, setReprocesando] = useState(false)
+  const [descargando, setDescargando] = useState(false)
   const [feedback, setFeedback] = useState<{ msg: string; ok: boolean } | null>(null)
 
   const load = useCallback(() => {
@@ -117,9 +111,28 @@ export function CarpetaDetailPage() {
     }
   }
 
+  const handleDescargarPreinforme = async () => {
+    if (!id) return
+    setDescargando(true)
+    setFeedback(null)
+    try {
+      const { blob, filename } = await api.preinforme(id)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (e: unknown) {
+      setFeedback({ msg: (e as Error).message, ok: false })
+    } finally {
+      setDescargando(false)
+    }
+  }
+
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center text-gray-400">
+      <div className="flex min-h-[60vh] items-center justify-center text-muted-foreground">
         Cargando...
       </div>
     )
@@ -127,232 +140,209 @@ export function CarpetaDetailPage() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="bg-red-50 text-red-700 rounded-lg p-6 text-sm max-w-md">{error}</div>
+      <div className="flex min-h-[60vh] items-center justify-center px-6">
+        <div className="max-w-md rounded-lg border border-red-200 bg-red-50 p-6 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
+          {error}
+        </div>
       </div>
     )
   }
 
   if (!carpeta) return null
 
-  const resultadoByPaso = Object.fromEntries(
-    carpeta.resultados.map((r) => [r.paso, r]),
-  ) as Partial<Record<'A' | 'B' | 'C', ResultadoIA>>
-
-  const tabs: { id: Tab; label: string; disabled: boolean }[] = [
-    { id: 'documentos', label: `Documentos (${carpeta.documentos.length})`, disabled: false },
-    { id: 'A', label: 'Clasificación', disabled: !resultadoByPaso['A'] },
-    { id: 'B', label: 'Extracción',    disabled: !resultadoByPaso['B'] },
-    { id: 'C', label: 'Dictamen',      disabled: !resultadoByPaso['C'] },
-  ]
+  const by = Object.fromEntries(carpeta.resultados.map((r) => [r.paso, r])) as Partial<
+    Record<'A' | 'B' | 'C', ResultadoIA>
+  >
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Navbar */}
-      <nav className="bg-white border-b border-gray-200 px-6 py-4 flex items-center gap-3 text-sm">
-        <Link to="/" className="text-gray-400 hover:text-gray-600">
-          ← Casos
+    <div className="mx-auto max-w-6xl px-6 py-8">
+      <div className="mb-4 flex items-center gap-2 text-sm">
+        <Link to="/casos" className="flex items-center gap-1 text-muted-foreground hover:text-foreground">
+          <ChevronLeft className="h-4 w-4" /> Casos
         </Link>
-        <span className="text-gray-300">/</span>
-        <span className="font-mono text-gray-700 text-xs">{carpeta.caso_id}</span>
-      </nav>
+        <span className="text-muted-foreground/40">/</span>
+        <span className="font-mono text-xs">{carpeta.caso_id}</span>
+      </div>
 
-      <main className="max-w-6xl mx-auto px-6 py-8">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
-          <div>
-            <div className="flex items-center gap-3 mb-1">
-              <h2 className="text-2xl font-bold text-gray-900 font-mono">{carpeta.caso_id}</h2>
-              <StatusBadge estado={carpeta.estado} />
-            </div>
-            <p className="text-sm text-gray-500">{carpeta.email_asunto}</p>
+      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <div className="mb-1 flex items-center gap-3">
+            <h1 className="font-mono text-2xl font-bold">{carpeta.caso_id}</h1>
+            <StatusBadge estado={carpeta.estado} />
           </div>
-          <div className="flex gap-2 shrink-0">
-            <button
-              onClick={handleReprocesar}
-              disabled={reprocesando}
-              className="px-4 py-2 text-sm rounded-lg border border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-50 transition cursor-pointer"
-            >
-              {reprocesando ? 'Relanzando...' : 'Reprocesar pipeline'}
-            </button>
-            <a
-              href={api.preinformeUrl(carpeta.id)}
-              target="_blank"
-              rel="noreferrer"
-              className="px-4 py-2 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition"
-            >
-              Descargar preinforme
-            </a>
-          </div>
+          <p className="text-sm text-muted-foreground">{carpeta.email_asunto}</p>
         </div>
+        <div className="flex shrink-0 gap-2">
+          <Button variant="outline" onClick={handleReprocesar} disabled={reprocesando}>
+            {reprocesando ? 'Relanzando...' : 'Reprocesar pipeline'}
+          </Button>
+          <Button onClick={handleDescargarPreinforme} disabled={descargando}>
+            {descargando ? 'Descargando...' : 'Descargar preinforme'}
+          </Button>
+        </div>
+      </div>
 
-        {/* Feedback banner */}
-        {feedback && (
-          <div
-            className={`mb-4 rounded-lg px-4 py-3 text-sm ${
-              feedback.ok
-                ? 'bg-green-50 text-green-700 border border-green-200'
-                : 'bg-red-50 text-red-700 border border-red-200'
-            }`}
-          >
-            {feedback.msg}
-          </div>
-        )}
+      {feedback && (
+        <div
+          className={`mb-4 rounded-lg border px-4 py-3 text-sm ${
+            feedback.ok
+              ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-300'
+              : 'border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300'
+          }`}
+        >
+          {feedback.msg}
+        </div>
+      )}
 
-        {/* Error del pipeline */}
-        {carpeta.estado === 'ERROR' && carpeta.mensaje_error && (
-          <div className="mb-6 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
-            <p className="text-xs font-semibold text-red-500 uppercase tracking-wide mb-1">
-              Error del pipeline
-            </p>
-            <pre className="text-sm text-red-700 font-mono whitespace-pre-wrap">
-              {carpeta.mensaje_error}
-            </pre>
-          </div>
-        )}
+      {carpeta.estado === 'ERROR' && carpeta.mensaje_error && (
+        <div className="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 dark:border-red-900 dark:bg-red-950">
+          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-red-500 dark:text-red-300">
+            Error del pipeline
+          </p>
+          <pre className="whitespace-pre-wrap font-mono text-sm text-red-700 dark:text-red-300">
+            {carpeta.mensaje_error}
+          </pre>
+        </div>
+      )}
 
-        {/* Info card */}
-        <div className="bg-white rounded-lg border border-gray-200 px-5 py-4 mb-6 grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
+      <Card className="mb-6">
+        <CardContent className="grid grid-cols-2 gap-4 p-5 text-sm sm:grid-cols-4">
           <div>
-            <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Remitente</p>
-            <p className="text-gray-700 truncate" title={carpeta.email_remitente}>
+            <p className="mb-1 text-xs uppercase tracking-wide text-muted-foreground">Remitente</p>
+            <p className="truncate" title={carpeta.email_remitente}>
               {carpeta.email_remitente}
             </p>
           </div>
           <div>
-            <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Recibida</p>
-            <p className="text-gray-700">{formatDateTime(carpeta.recibida_en)}</p>
+            <p className="mb-1 text-xs uppercase tracking-wide text-muted-foreground">Recibida</p>
+            <p>{formatDateTime(carpeta.recibida_en)}</p>
           </div>
           <div>
-            <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Procesada</p>
-            <p className="text-gray-700">
-              {carpeta.procesada_en ? formatDateTime(carpeta.procesada_en) : '—'}
-            </p>
+            <p className="mb-1 text-xs uppercase tracking-wide text-muted-foreground">Procesada</p>
+            <p>{carpeta.procesada_en ? formatDateTime(carpeta.procesada_en) : '—'}</p>
           </div>
           <div>
-            <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Documentos</p>
-            <p className="text-gray-700">{carpeta.documentos.length}</p>
+            <p className="mb-1 text-xs uppercase tracking-wide text-muted-foreground">Documentos</p>
+            <p>{carpeta.documentos.length}</p>
           </div>
-        </div>
+        </CardContent>
+      </Card>
 
-        {/* Tabs */}
-        <div className="flex gap-1 border-b border-gray-200 mb-6">
-          {tabs.map((t) => (
-            <button
-              key={t.id}
-              disabled={t.disabled}
-              onClick={() => !t.disabled && setTab(t.id)}
-              className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
-                tab === t.id
-                  ? 'border-indigo-500 text-indigo-600'
-                  : t.disabled
-                  ? 'border-transparent text-gray-300 cursor-not-allowed'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 cursor-pointer'
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
+      <Tabs defaultValue="documentos">
+        <TabsList>
+          <TabsTrigger value="documentos">Documentos ({carpeta.documentos.length})</TabsTrigger>
+          <TabsTrigger value="A" disabled={!by.A}>
+            Clasificación
+          </TabsTrigger>
+          <TabsTrigger value="B" disabled={!by.B}>
+            Extracción
+          </TabsTrigger>
+          <TabsTrigger value="C" disabled={!by.C}>
+            Dictamen
+          </TabsTrigger>
+        </TabsList>
 
-        {/* Tab: Documentos */}
-        {tab === 'documentos' && (
-          <div className="space-y-6">
-            {/* Archivos recibidos */}
-            <div>
-              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
-                Archivos recibidos
-              </h3>
-              {carpeta.documentos.length === 0 ? (
-                <p className="text-gray-400 text-sm text-center py-10">No hay documentos.</p>
-              ) : (
-                <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-                  <table className="w-full text-sm">
-                    <thead className="bg-gray-50 border-b border-gray-200">
-                      <tr>
-                        {['Archivo', 'Tipo de documento', 'Formato', 'Subido'].map((h) => (
-                          <th
-                            key={h}
-                            className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide"
-                          >
-                            {h}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {carpeta.documentos.map((d) => (
-                        <tr key={d.id} className="hover:bg-gray-50">
-                          <td className="px-4 py-3 font-medium text-gray-900">{d.nombre_archivo}</td>
-                          <td className="px-4 py-3 text-gray-600">{d.tipo_doc || '—'}</td>
-                          <td className="px-4 py-3 text-gray-400 uppercase text-xs">{d.formato}</td>
-                          <td className="px-4 py-3 text-gray-400 text-xs">
-                            {formatDateTime(d.subido_en)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-
-            {/* Documentación complementaria */}
-            {resultadoByPaso['B'] && (
-              <div>
-                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
-                  Documentación complementaria
-                </h3>
-                <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-                  <table className="w-full text-sm">
-                    <thead className="bg-gray-50 border-b border-gray-200">
-                      <tr>
-                        <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide">
-                          Documento esperado
+        <TabsContent value="documentos" className="space-y-6">
+          <div>
+            <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Archivos recibidos
+            </h3>
+            {carpeta.documentos.length === 0 ? (
+              <p className="py-10 text-center text-sm text-muted-foreground">No hay documentos.</p>
+            ) : (
+              <Card className="overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="border-b bg-muted/40">
+                    <tr>
+                      {['Archivo', 'Tipo de documento', 'Formato', 'Subido'].map((h) => (
+                        <th
+                          key={h}
+                          className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground"
+                        >
+                          {h}
                         </th>
-                        <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wide w-36">
-                          Estado
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {computeDocumentacion(resultadoByPaso['B']!, carpeta.documentos).map((item) => (
-                        <tr key={item.nombre} className="hover:bg-gray-50">
-                          <td className="px-4 py-3 text-gray-700">{item.nombre}</td>
-                          <td className="px-4 py-3">
-                            <span
-                              className={`inline-flex items-center gap-1.5 text-xs font-semibold ${
-                                item.estado === 'ENTREGADO'
-                                  ? 'text-green-700'
-                                  : 'text-red-600'
-                              }`}
-                            >
-                              <span
-                                className={`w-1.5 h-1.5 rounded-full ${
-                                  item.estado === 'ENTREGADO' ? 'bg-green-500' : 'bg-red-400'
-                                }`}
-                              />
-                              {item.estado}
-                            </span>
-                          </td>
-                        </tr>
                       ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {carpeta.documentos.map((d) => (
+                      <tr key={d.id} className="hover:bg-muted/30">
+                        <td className="px-4 py-3 font-medium">{d.nombre_archivo}</td>
+                        <td className="px-4 py-3 text-muted-foreground">{d.tipo_doc || '—'}</td>
+                        <td className="px-4 py-3 text-xs uppercase text-muted-foreground">
+                          {d.formato}
+                        </td>
+                        <td className="px-4 py-3 text-xs text-muted-foreground">
+                          {formatDateTime(d.subido_en)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </Card>
             )}
           </div>
-        )}
 
-        {/* Tabs: IA results */}
-        {(tab === 'A' || tab === 'B' || tab === 'C') &&
-          (resultadoByPaso[tab] ? (
-            <ResultadoPanel resultado={resultadoByPaso[tab]!} />
-          ) : (
-            <p className="text-gray-400 text-sm text-center py-10">Resultado no disponible.</p>
-          ))}
-      </main>
+          {by.B && (
+            <div>
+              <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Documentación complementaria
+              </h3>
+              <Card className="overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="border-b bg-muted/40">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        Documento esperado
+                      </th>
+                      <th className="w-40 px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        Estado
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {computeDocumentacion(by.B!, carpeta.documentos).map((item) => (
+                      <tr key={item.nombre} className="hover:bg-muted/30">
+                        <td className="px-4 py-3">{item.nombre}</td>
+                        <td className="px-4 py-3">
+                          <span
+                            className={`inline-flex items-center gap-1.5 text-xs font-semibold ${
+                              item.entregado
+                                ? 'text-emerald-700 dark:text-emerald-400'
+                                : 'text-red-600 dark:text-red-400'
+                            }`}
+                          >
+                            <span
+                              className={`h-1.5 w-1.5 rounded-full ${
+                                item.entregado
+                                  ? 'bg-emerald-500 dark:bg-emerald-400'
+                                  : 'bg-red-400 dark:bg-red-500'
+                              }`}
+                            />
+                            {item.entregado ? 'ENTREGADO' : 'NO ENTREGADO'}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </Card>
+            </div>
+          )}
+        </TabsContent>
+
+        {(['A', 'B', 'C'] as const).map((p) => (
+          <TabsContent key={p} value={p}>
+            {by[p] ? (
+              <ResultadoPanel resultado={by[p]!} />
+            ) : (
+              <p className="py-10 text-center text-sm text-muted-foreground">
+                Resultado no disponible.
+              </p>
+            )}
+          </TabsContent>
+        ))}
+      </Tabs>
     </div>
   )
 }
