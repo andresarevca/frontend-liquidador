@@ -6,6 +6,7 @@ import { DashboardPage } from './pages/DashboardPage'
 import { CarpetaListPage } from './pages/CarpetaListPage'
 import { CarpetaDetailPage } from './pages/CarpetaDetailPage'
 import { DocumentosPage } from './pages/DocumentosPage'
+import { CorpusLegalPage } from './pages/CorpusLegalPage'
 import { ConfiguracionPage } from './pages/ConfiguracionPage'
 
 function App() {
@@ -19,6 +20,7 @@ function App() {
           <Route path="/casos" element={<CarpetaListPage />} />
           <Route path="/casos/:id" element={<CarpetaDetailPage />} />
           <Route path="/documentos" element={<DocumentosPage />} />
+          <Route path="/corpus" element={<CorpusLegalPage />} />
           <Route path="/configuracion" element={<ConfiguracionPage />} />
         </Route>
       </Routes>

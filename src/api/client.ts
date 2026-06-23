@@ -1,4 +1,14 @@
-import type { Carpeta, CarpetaDetalle, DocumentoConCarpeta, ResultadoIA, UserProfile } from '../types'
+import type {
+  BusquedaLegalResponse,
+  Carpeta,
+  CarpetaDetalle,
+  DocumentoConCarpeta,
+  FuentesCorpus,
+  IndexarPdfResponse,
+  ResultadoIA,
+  SubirDocumentosResponse,
+  UserProfile,
+} from '../types'
 import { clearTokens, getAccessToken, getRefreshToken, setAccessToken, setTokens } from '../lib/tokens'
 
 let refreshPromise: Promise<boolean> | null = null
@@ -39,6 +49,28 @@ async function request<T>(path: string, options?: RequestInit, _retried = false)
 
   if (res.status === 401 && !_retried && (await tryRefresh())) {
     return request<T>(path, options, true)
+  }
+
+  if (res.status === 401) {
+    clearTokens()
+  }
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    throw new Error(text || `${res.status} ${res.statusText}`)
+  }
+  return res.json() as Promise<T>
+}
+
+async function requestUpload<T>(path: string, formData: FormData, _retried = false): Promise<T> {
+  const res = await fetch(`/api${path}`, {
+    method: 'POST',
+    body: formData,
+    headers: authHeaders(),
+  })
+
+  if (res.status === 401 && !_retried && (await tryRefresh())) {
+    return requestUpload<T>(path, formData, true)
   }
 
   if (res.status === 401) {
@@ -97,9 +129,27 @@ export const api = {
   dictamen: (id: string) => request<ResultadoIA>(`/carpetas/${id}/dictamen/`),
   reprocesar: (id: string) =>
     request<{ detail: string }>(`/carpetas/${id}/reprocesar/`, { method: 'POST' }),
+  subirDocumentos: (id: string, archivos: File[]) => {
+    const formData = new FormData()
+    archivos.forEach((archivo) => formData.append('archivos', archivo))
+    return requestUpload<SubirDocumentosResponse>(`/carpetas/${id}/documentos/`, formData)
+  },
   preinforme: (id: string) =>
     authenticatedDownload(`/carpetas/${id}/preinforme/`, `preinforme-${id}.docx`),
   documentos: () => requestList<DocumentoConCarpeta>('/documentos/'),
+
+  corpusBuscar: (q: string, municipio?: string, n = 6) => {
+    const params = new URLSearchParams({ q, n: String(n) })
+    if (municipio) params.set('municipio', municipio)
+    return request<BusquedaLegalResponse>(`/corpus/buscar/?${params.toString()}`)
+  },
+  corpusFuentes: () => request<FuentesCorpus>('/corpus/fuentes/'),
+  corpusIndexarPdf: (archivo: File, municipio: string) => {
+    const formData = new FormData()
+    formData.append('archivo', archivo)
+    formData.append('municipio', municipio)
+    return requestUpload<IndexarPdfResponse>('/corpus/indexar-pdf/', formData)
+  },
 
   authLogin: async (username: string, password: string) => {
     const res = await fetch('/api/auth/login/', {

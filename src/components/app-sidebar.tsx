@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, FolderKanban, FileText, Users, LogOut, ShieldCheck } from 'lucide-react'
+import { LayoutDashboard, FolderKanban, FileText, Users, LogOut, ShieldCheck, Scale } from 'lucide-react'
 
 import {
   Sidebar,
@@ -19,6 +19,7 @@ const items = [
   { title: 'Dashboard', url: '/dashboard', icon: LayoutDashboard },
   { title: 'Casos', url: '/casos', icon: FolderKanban },
   { title: 'Documentos', url: '/documentos', icon: FileText },
+  { title: 'Corpus Legal', url: '/corpus', icon: Scale },
   { title: 'Usuarios y config.', url: '/configuracion', icon: Users },
 ]
 

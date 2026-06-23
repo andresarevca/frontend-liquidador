@@ -1,12 +1,13 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { ChevronLeft } from 'lucide-react'
+import { ChevronLeft, Upload } from 'lucide-react'
 
 import { api } from '@/api/client'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { StatusBadge } from '@/components/StatusBadge'
+import { ClasificacionPanel, DictamenPanel, ExtraccionPanel } from '@/components/ResultadoAmigable'
 import type { CarpetaDetalle, Documento, ResultadoIA } from '@/types'
 
 // ----------------------------------------------------------------------------
@@ -77,6 +78,10 @@ export function CarpetaDetailPage() {
   const [reprocesando, setReprocesando] = useState(false)
   const [descargando, setDescargando] = useState(false)
   const [feedback, setFeedback] = useState<{ msg: string; ok: boolean } | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [archivosSeleccionados, setArchivosSeleccionados] = useState<File[]>([])
+  const [subiendo, setSubiendo] = useState(false)
+  const [verJson, setVerJson] = useState<Partial<Record<'A' | 'B' | 'C', boolean>>>({})
 
   const load = useCallback(() => {
     if (!id) return
@@ -108,6 +113,28 @@ export function CarpetaDetailPage() {
       setFeedback({ msg: (e as Error).message, ok: false })
     } finally {
       setReprocesando(false)
+    }
+  }
+
+  const handleSubirDocumentos = async () => {
+    if (archivosSeleccionados.length === 0 || !id) return
+
+    setSubiendo(true)
+    setFeedback(null)
+    try {
+      const res = await api.subirDocumentos(id, archivosSeleccionados)
+      setArchivosSeleccionados([])
+      if (fileInputRef.current) fileInputRef.current.value = ''
+      const subidos = `${res.documentos.length} documento(s) subido(s) correctamente.`
+      const rechazo = res.rechazados.length
+        ? ` Ignorados por formato no soportado: ${res.rechazados.join(', ')}.`
+        : ''
+      setFeedback({ msg: `${subidos}${rechazo} Podés reprocesar el pipeline para incluirlos.`, ok: true })
+      load()
+    } catch (e: unknown) {
+      setFeedback({ msg: (e as Error).message, ok: false })
+    } finally {
+      setSubiendo(false)
     }
   }
 
@@ -154,6 +181,10 @@ export function CarpetaDetailPage() {
     Record<'A' | 'B' | 'C', ResultadoIA>
   >
 
+  const pendientesReproceso = carpeta.procesada_en
+    ? carpeta.documentos.filter((d) => new Date(d.subido_en) > new Date(carpeta.procesada_en!)).length
+    : 0
+
   return (
     <div className="mx-auto max-w-6xl px-6 py-8">
       <div className="mb-4 flex items-center gap-2 text-sm">
@@ -172,13 +203,32 @@ export function CarpetaDetailPage() {
           </div>
           <p className="text-sm text-muted-foreground">{carpeta.email_asunto}</p>
         </div>
-        <div className="flex shrink-0 gap-2">
-          <Button variant="outline" onClick={handleReprocesar} disabled={reprocesando}>
-            {reprocesando ? 'Relanzando...' : 'Reprocesar pipeline'}
-          </Button>
-          <Button onClick={handleDescargarPreinforme} disabled={descargando}>
-            {descargando ? 'Descargando...' : 'Descargar preinforme'}
-          </Button>
+        <div className="flex shrink-0 flex-col items-end gap-1.5">
+          <div className="flex gap-2">
+            <Button
+              variant={pendientesReproceso > 0 ? 'default' : 'outline'}
+              onClick={handleReprocesar}
+              disabled={reprocesando}
+              className={pendientesReproceso > 0 ? 'relative' : undefined}
+            >
+              {pendientesReproceso > 0 && (
+                <span className="absolute -right-1 -top-1 flex h-3 w-3">
+                  <span className="absolute h-full w-full animate-ping rounded-full bg-amber-400 opacity-75" />
+                  <span className="relative h-3 w-3 rounded-full bg-amber-500" />
+                </span>
+              )}
+              {reprocesando ? 'Relanzando...' : 'Reprocesar pipeline'}
+            </Button>
+            <Button onClick={handleDescargarPreinforme} disabled={descargando}>
+              {descargando ? 'Descargando...' : 'Descargar preinforme'}
+            </Button>
+          </div>
+          {pendientesReproceso > 0 && (
+            <p className="text-xs font-medium text-amber-600 dark:text-amber-400">
+              {pendientesReproceso} documento{pendientesReproceso > 1 ? 's' : ''} nuevo
+              {pendientesReproceso > 1 ? 's' : ''} sin procesar
+            </p>
+          )}
         </div>
       </div>
 
@@ -244,9 +294,42 @@ export function CarpetaDetailPage() {
 
         <TabsContent value="documentos" className="space-y-6">
           <div>
-            <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Archivos recibidos
-            </h3>
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Archivos recibidos
+              </h3>
+              <div className="flex items-center gap-2">
+                <input
+                  type="file"
+                  multiple
+                  ref={fileInputRef}
+                  accept=".pdf,.jpg,.jpeg,.png,.docx,.odt,.odf,.txt"
+                  className="hidden"
+                  onChange={(e) => setArchivosSeleccionados(Array.from(e.target.files ?? []))}
+                />
+                <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
+                  Elegir archivos
+                </Button>
+                {archivosSeleccionados.length > 0 && (
+                  <span
+                    className="max-w-[180px] truncate text-xs text-muted-foreground"
+                    title={archivosSeleccionados.map((f) => f.name).join(', ')}
+                  >
+                    {archivosSeleccionados.length === 1
+                      ? archivosSeleccionados[0].name
+                      : `${archivosSeleccionados.length} archivos seleccionados`}
+                  </span>
+                )}
+                <Button
+                  size="sm"
+                  onClick={handleSubirDocumentos}
+                  disabled={subiendo || archivosSeleccionados.length === 0}
+                >
+                  <Upload className="h-4 w-4" />
+                  {subiendo ? 'Subiendo...' : 'Subir documentos faltantes'}
+                </Button>
+              </div>
+            </div>
             {carpeta.documentos.length === 0 ? (
               <p className="py-10 text-center text-sm text-muted-foreground">No hay documentos.</p>
             ) : (
@@ -334,7 +417,26 @@ export function CarpetaDetailPage() {
         {(['A', 'B', 'C'] as const).map((p) => (
           <TabsContent key={p} value={p}>
             {by[p] ? (
-              <ResultadoPanel resultado={by[p]!} />
+              <div className="space-y-3">
+                <div className="flex justify-end">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setVerJson((prev) => ({ ...prev, [p]: !prev[p] }))}
+                  >
+                    {verJson[p] ? 'Ver resumen' : 'Ver JSON técnico'}
+                  </Button>
+                </div>
+                {verJson[p] ? (
+                  <ResultadoPanel resultado={by[p]!} />
+                ) : p === 'A' ? (
+                  <ClasificacionPanel resultado={by[p]!.resultado} />
+                ) : p === 'B' ? (
+                  <ExtraccionPanel resultado={by[p]!.resultado} />
+                ) : (
+                  <DictamenPanel resultado={by[p]!.resultado} />
+                )}
+              </div>
             ) : (
               <p className="py-10 text-center text-sm text-muted-foreground">
                 Resultado no disponible.

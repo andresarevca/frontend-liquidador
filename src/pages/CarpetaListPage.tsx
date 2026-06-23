@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { api } from '@/api/client'
-import { Card, CardContent } from '@/components/ui/card'
+import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import {
   Select,
@@ -37,16 +37,6 @@ export function CarpetaListPage() {
       .finally(() => setLoading(false))
   }, [])
 
-  const stats = useMemo(
-    () => ({
-      total: carpetas.length,
-      completadas: carpetas.filter((c) => c.estado === 'COMPLETADA').length,
-      procesando: carpetas.filter((c) => c.estado === 'PROCESANDO').length,
-      error: carpetas.filter((c) => c.estado === 'ERROR').length,
-    }),
-    [carpetas],
-  )
-
   const filtered = useMemo(() => {
     const q = search.toLowerCase()
     return carpetas.filter((c) => {
@@ -60,34 +50,20 @@ export function CarpetaListPage() {
     })
   }, [carpetas, search, estado])
 
-  const kpis = [
-    { label: 'Total casos', value: stats.total, color: 'text-foreground' },
-    { label: 'Completadas', value: stats.completadas, color: 'text-emerald-600 dark:text-emerald-400' },
-    { label: 'Procesando', value: stats.procesando, color: 'text-amber-600 dark:text-amber-400' },
-    { label: 'Con error', value: stats.error, color: 'text-red-600 dark:text-red-400' },
-  ]
-
   return (
     <div className="mx-auto max-w-7xl px-6 py-8">
       <div className="mb-6">
         <h1 className="text-2xl font-semibold tracking-tight">Casos</h1>
-        <p className="text-sm text-muted-foreground">Listado completo de carpetas recibidas.</p>
+        <p className="text-sm text-muted-foreground">
+          Buscá y filtrá todas las carpetas recibidas. Para un resumen general, mirá el{' '}
+          <Link to="/dashboard" className="text-primary hover:underline">
+            Dashboard
+          </Link>
+          .
+        </p>
       </div>
 
-      <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
-        {kpis.map((k) => (
-          <Card key={k.label}>
-            <CardContent className="p-5">
-              <p className="mb-1 text-xs uppercase tracking-wide text-muted-foreground">
-                {k.label}
-              </p>
-              <p className={`text-3xl font-bold ${k.color}`}>{loading ? '—' : k.value}</p>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      <div className="mb-4 flex flex-col gap-3 sm:flex-row">
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
         <Input
           placeholder="Buscar por caso, remitente o asunto..."
           value={search}
@@ -106,6 +82,9 @@ export function CarpetaListPage() {
             <SelectItem value="ERROR">Error</SelectItem>
           </SelectContent>
         </Select>
+        <span className="whitespace-nowrap text-xs text-muted-foreground">
+          {loading ? '—' : `${filtered.length} de ${carpetas.length} casos`}
+        </span>
       </div>
 
       {error ? (
