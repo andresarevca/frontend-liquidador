@@ -1,23 +1,49 @@
+import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { api } from '@/api/client'
 import { useAuth } from '@/lib/auth'
-
-const usuariosMock = [
-  { nombre: 'Elías Arévalo', email: 'elias@demo.com', rol: 'Admin' },
-  { nombre: 'Andrés Carreras', email: 'andres@demo.com', rol: 'Liquidador' },
-  { nombre: 'Carlo Almeida', email: 'carlo@demo.com', rol: 'Liquidador' },
-]
 
 export function ConfiguracionPage() {
   const { user } = useAuth()
+  const [passwordActual, setPasswordActual] = useState('')
+  const [passwordNueva, setPasswordNueva] = useState('')
+  const [passwordConfirmar, setPasswordConfirmar] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [exito, setExito] = useState<string | null>(null)
+  const [submitting, setSubmitting] = useState(false)
+
+  const onSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError(null)
+    setExito(null)
+
+    if (passwordNueva !== passwordConfirmar) {
+      setError('La nueva contraseña y su confirmación no coinciden.')
+      return
+    }
+
+    setSubmitting(true)
+    try {
+      await api.cambiarPassword(passwordActual, passwordNueva)
+      setExito('Contraseña actualizada correctamente.')
+      setPasswordActual('')
+      setPasswordNueva('')
+      setPasswordConfirmar('')
+    } catch (err) {
+      setError((err as Error).message || 'No se pudo actualizar la contraseña.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6 px-6 py-8">
+    <div className="mx-auto max-w-3xl space-y-6 px-6 py-8">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Usuarios y configuración</h1>
-        <p className="text-sm text-muted-foreground">Gestión de cuentas y preferencias.</p>
+        <h1 className="text-2xl font-semibold tracking-tight">Mi cuenta</h1>
+        <p className="text-sm text-muted-foreground">Tus datos y tu contraseña.</p>
       </div>
 
       <Card>
@@ -27,60 +53,72 @@ export function ConfiguracionPage() {
         <CardContent className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2">
             <Label>Nombre</Label>
-            <Input defaultValue={user?.nombre ?? ''} />
+            <Input value={user?.nombre ?? ''} disabled />
           </div>
           <div className="space-y-2">
             <Label>Email</Label>
-            <Input defaultValue={user?.email ?? ''} disabled />
-          </div>
-          <div className="space-y-2">
-            <Label>Rol</Label>
-            <Input defaultValue={user?.rol ?? ''} disabled />
-          </div>
-          <div className="flex items-end">
-            <Button>Guardar cambios</Button>
+            <Input value={user?.email ?? ''} disabled />
           </div>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-base">Usuarios del equipo</CardTitle>
-            <Button size="sm" variant="outline">
-              Invitar usuario
-            </Button>
-          </div>
+          <CardTitle className="text-base">Cambiar contraseña</CardTitle>
         </CardHeader>
-        <CardContent className="p-0">
-          <table className="w-full text-sm">
-            <thead className="border-b bg-muted/40">
-              <tr>
-                {['Nombre', 'Email', 'Rol', ''].map((h) => (
-                  <th
-                    key={h}
-                    className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground"
-                  >
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {usuariosMock.map((u) => (
-                <tr key={u.email} className="hover:bg-muted/30">
-                  <td className="px-4 py-3 font-medium">{u.nombre}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{u.email}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{u.rol}</td>
-                  <td className="px-4 py-3 text-right">
-                    <Button size="sm" variant="ghost">
-                      Editar
-                    </Button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <CardContent>
+          <form onSubmit={onSubmit} className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2 sm:col-span-2">
+              <Label htmlFor="password-actual">Contraseña actual</Label>
+              <Input
+                id="password-actual"
+                type="password"
+                value={passwordActual}
+                onChange={(e) => setPasswordActual(e.target.value)}
+                autoComplete="current-password"
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="password-nueva">Nueva contraseña</Label>
+              <Input
+                id="password-nueva"
+                type="password"
+                value={passwordNueva}
+                onChange={(e) => setPasswordNueva(e.target.value)}
+                autoComplete="new-password"
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="password-confirmar">Confirmar nueva contraseña</Label>
+              <Input
+                id="password-confirmar"
+                type="password"
+                value={passwordConfirmar}
+                onChange={(e) => setPasswordConfirmar(e.target.value)}
+                autoComplete="new-password"
+                required
+              />
+            </div>
+
+            {error && (
+              <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300 sm:col-span-2">
+                {error}
+              </div>
+            )}
+            {exito && (
+              <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700 dark:border-green-900 dark:bg-green-950 dark:text-green-300 sm:col-span-2">
+                {exito}
+              </div>
+            )}
+
+            <div className="sm:col-span-2">
+              <Button type="submit" disabled={submitting}>
+                {submitting ? 'Guardando...' : 'Guardar contraseña'}
+              </Button>
+            </div>
+          </form>
         </CardContent>
       </Card>
     </div>

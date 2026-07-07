@@ -165,5 +165,11 @@ export const api = {
     setTokens(data.access, data.refresh)
   },
   me: () => request<UserProfile>('/auth/me/'),
+  cambiarPassword: (passwordActual: string, passwordNueva: string) =>
+    request<{ detail: string }>('/auth/cambiar-password/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password_actual: passwordActual, password_nueva: passwordNueva }),
+    }),
   logout: () => clearTokens(),
 }
