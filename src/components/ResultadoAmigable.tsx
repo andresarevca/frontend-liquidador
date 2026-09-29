@@ -8,7 +8,10 @@ import type { ClasificacionItem, DictamenData, ExtraccionData } from '@/types'
 // Utilidades de formato
 // ----------------------------------------------------------------------------
 
-function humanize(value: string): string {
+// Los campos vienen de una extracción por IA sin schema estrictamente garantizado:
+// cualquier valor puede llegar null/undefined aunque el tipo declarado diga `string`.
+function humanize(value: string | null | undefined): string {
+  if (!value) return '—'
   return value
     .toLowerCase()
     .split('_')
@@ -28,7 +31,8 @@ const TIPO_DOC_LABELS: Record<string, string> = {
   OTRO: 'Otro documento',
 }
 
-function tipoDocLabel(tipo: string): string {
+function tipoDocLabel(tipo: string | null | undefined): string {
+  if (!tipo) return '—'
   return TIPO_DOC_LABELS[tipo] ?? humanize(tipo)
 }
 
@@ -84,7 +88,10 @@ function Stat({ label, value }: { label: string; value: string | number | null |
 }
 
 function BarraConfianza({ value, label }: { value: number; label?: string }) {
-  const pct = Math.round((value ?? 0) * 100)
+  // La IA no siempre respeta la escala documentada: a veces manda 0–1 (0.85)
+  // y a veces ya manda 0–100 (85). Si viene mayor a 1, asumimos que ya es porcentaje.
+  const raw = value ?? 0
+  const pct = Math.round(Math.min(100, Math.max(0, raw > 1 ? raw : raw * 100)))
   const tone = pct >= 85 ? 'bg-emerald-500' : pct >= 60 ? 'bg-amber-500' : 'bg-red-500'
   return (
     <div className="space-y-1">
