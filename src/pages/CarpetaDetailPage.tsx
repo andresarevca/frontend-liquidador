@@ -7,7 +7,12 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { StatusBadge } from '@/components/StatusBadge'
-import { ClasificacionPanel, DictamenPanel, ExtraccionPanel } from '@/components/ResultadoAmigable'
+import {
+  ClasificacionPanel,
+  DictamenPanel,
+  ExtraccionPanel,
+  ResultadoErrorBoundary,
+} from '@/components/ResultadoAmigable'
 import type { CarpetaDetalle, Documento, ResultadoIA } from '@/types'
 
 // ----------------------------------------------------------------------------
@@ -429,12 +434,19 @@ export function CarpetaDetailPage() {
                 </div>
                 {verJson[p] ? (
                   <ResultadoPanel resultado={by[p]!} />
-                ) : p === 'A' ? (
-                  <ClasificacionPanel resultado={by[p]!.resultado} />
-                ) : p === 'B' ? (
-                  <ExtraccionPanel resultado={by[p]!.resultado} />
                 ) : (
-                  <DictamenPanel resultado={by[p]!.resultado} />
+                  <ResultadoErrorBoundary
+                    key={p}
+                    onVerJson={() => setVerJson((prev) => ({ ...prev, [p]: true }))}
+                  >
+                    {p === 'A' ? (
+                      <ClasificacionPanel resultado={by[p]!.resultado} />
+                    ) : p === 'B' ? (
+                      <ExtraccionPanel resultado={by[p]!.resultado} />
+                    ) : (
+                      <DictamenPanel resultado={by[p]!.resultado} />
+                    )}
+                  </ResultadoErrorBoundary>
                 )}
               </div>
             ) : (

@@ -1,8 +1,52 @@
-import { useState } from 'react'
+import { Component, useState, type ErrorInfo, type ReactNode } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import type { ClasificacionItem, DictamenData, ExtraccionData } from '@/types'
+
+// ----------------------------------------------------------------------------
+// Resiliencia — los resultados vienen de una extracción por IA sin schema
+// 100% garantizado. Si algún campo inesperado igual rompe un panel, esto
+// evita que se vaya en blanco toda la pestaña.
+// ----------------------------------------------------------------------------
+
+type ResultadoErrorBoundaryProps = { onVerJson?: () => void; children: ReactNode }
+type ResultadoErrorBoundaryState = { hasError: boolean }
+
+export class ResultadoErrorBoundary extends Component<
+  ResultadoErrorBoundaryProps,
+  ResultadoErrorBoundaryState
+> {
+  state: ResultadoErrorBoundaryState = { hasError: false }
+
+  static getDerivedStateFromError(): ResultadoErrorBoundaryState {
+    return { hasError: true }
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error('Error al renderizar resultado de IA:', error, info.componentStack)
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300">
+          No se pudo mostrar este resultado en formato amigable (datos con forma inesperada).
+          {this.props.onVerJson && (
+            <>
+              {' '}
+              <button className="underline underline-offset-2" onClick={this.props.onVerJson}>
+                Ver JSON técnico
+              </button>
+              .
+            </>
+          )}
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
 
 // ----------------------------------------------------------------------------
 // Utilidades de formato
