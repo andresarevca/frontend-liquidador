@@ -144,6 +144,10 @@ export const api = {
     return request<BusquedaLegalResponse>(`/corpus/buscar/?${params.toString()}`)
   },
   corpusFuentes: () => request<FuentesCorpus>('/corpus/fuentes/'),
+  corpusEliminar: (fuente: string) =>
+    request<{ chunks_eliminados: number }>(`/corpus/fuente/?fuente=${encodeURIComponent(fuente)}`, {
+      method: 'DELETE',
+    }),
   corpusIndexarPdf: (archivo: File, municipio: string) => {
     const formData = new FormData()
     formData.append('archivo', archivo)

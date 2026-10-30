@@ -55,11 +55,23 @@ export function CorpusLegalPage() {
     }
   }
 
+  const handleEliminar = async (fuente: string) => {
+    if (!window.confirm(`¿Eliminar "${fuente}" de tu corpus?`)) return
+    setSubidaError(null)
+    setSubidaOk(null)
+    try {
+      await api.corpusEliminar(fuente)
+      cargarFuentes()
+    } catch (e) {
+      setSubidaError((e as Error).message)
+    }
+  }
+
   const handleSubirPdf = async (e: React.FormEvent) => {
     e.preventDefault()
     const archivo = fileInputRef.current?.files?.[0]
     if (!archivo) {
-      setSubidaError('Seleccioná un archivo PDF.')
+      setSubidaError('Seleccioná un archivo PDF o DOCX.')
       return
     }
     setSubiendo(true)
@@ -165,11 +177,11 @@ export function CorpusLegalPage() {
 
         <div className="space-y-6">
           <Card className="p-4">
-            <h2 className="mb-3 text-sm font-semibold">Indexar ordenanza (PDF)</h2>
+            <h2 className="mb-3 text-sm font-semibold">Indexar ordenanza (PDF o DOCX)</h2>
             <form onSubmit={handleSubirPdf} className="space-y-3">
               <div className="space-y-1">
-                <Label htmlFor="pdf-file">Archivo PDF</Label>
-                <Input id="pdf-file" type="file" accept="application/pdf" ref={fileInputRef} />
+                <Label htmlFor="pdf-file">Archivo PDF o DOCX</Label>
+                <Input id="pdf-file" type="file" accept=".pdf,.docx" ref={fileInputRef} />
               </div>
               <div className="space-y-1">
                 <Label htmlFor="pdf-municipio">Municipio</Label>
@@ -181,7 +193,7 @@ export function CorpusLegalPage() {
                 />
               </div>
               <Button type="submit" disabled={subiendo} className="w-full">
-                {subiendo ? 'Indexando...' : 'Indexar PDF'}
+                {subiendo ? 'Indexando...' : 'Indexar documento'}
               </Button>
               {subidaError && <p className="text-sm text-red-600 dark:text-red-400">{subidaError}</p>}
               {subidaOk && <p className="text-sm text-emerald-600 dark:text-emerald-400">{subidaOk}</p>}
@@ -192,11 +204,27 @@ export function CorpusLegalPage() {
             <h2 className="mb-3 text-sm font-semibold">Documentos indexados</h2>
             {fuentes && fuentes.fuentes.length > 0 ? (
               <ul className="space-y-1.5 text-sm text-muted-foreground">
-                {fuentes.fuentes.map((f) => (
-                  <li key={f} className="truncate">
-                    • {f}
-                  </li>
-                ))}
+                {fuentes.fuentes.map((f) => {
+                  const propia = fuentes.fuentes_propias.includes(f)
+                  return (
+                    <li key={f} className="flex items-center justify-between gap-2">
+                      <span className="truncate">
+                        • {f}{' '}
+                        <span className="text-xs">({propia ? 'tuyo' : 'global'})</span>
+                      </span>
+                      {propia && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleEliminar(f)}
+                        >
+                          Eliminar
+                        </Button>
+                      )}
+                    </li>
+                  )
+                })}
               </ul>
             ) : (
               <p className="text-sm text-muted-foreground">No hay documentos indexados todavía.</p>

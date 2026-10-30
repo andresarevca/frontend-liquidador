@@ -154,6 +154,7 @@ export interface BusquedaLegalResponse {
 
 export interface FuentesCorpus {
   fuentes: string[]
+  fuentes_propias: string[]
   total_chunks: number
   total_casos_historicos: number
 }
