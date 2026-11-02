@@ -1,34 +1,75 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { FolderKanban, CheckCircle2, Loader2, AlertCircle } from 'lucide-react'
+import { FolderKanban, CheckCircle2, Loader2, AlertCircle, FolderOpen } from 'lucide-react'
 
 import { api } from '@/api/client'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { EmptyState } from '@/components/EmptyState'
+import { ErrorState } from '@/components/ErrorState'
 import { StatusBadge } from '@/components/StatusBadge'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import type { Carpeta } from '@/types'
 
+const POLL_MS = 10000
+
+type Resumen = { total: number; completadas: number; procesando: number; errores: number; recientes: Carpeta[] }
+
+// Los totales se piden al servidor (page_size=1 sólo para leer `count`) en lugar de bajar todas las carpetas.
+async function cargarResumen(): Promise<Resumen> {
+  const [total, completadas, procesando, errores, recientes] = await Promise.all([
+    api.carpetasPage({ page_size: 1 }),
+    api.carpetasPage({ page_size: 1, estado: 'COMPLETADA' }),
+    api.carpetasPage({ page_size: 1, estado: 'PROCESANDO' }),
+    api.carpetasPage({ page_size: 1, estado: 'ERROR' }),
+    api.carpetasPage({ page_size: 5 }),
+  ])
+  return {
+    total: total.count,
+    completadas: completadas.count,
+    procesando: procesando.count,
+    errores: errores.count,
+    recientes: recientes.results,
+  }
+}
+
 export function DashboardPage() {
-  const [carpetas, setCarpetas] = useState<Carpeta[]>([])
-  const [loading, setLoading] = useState(true)
+  const [resumen, setResumen] = useState<Resumen | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [intento, setIntento] = useState(0)
 
   useEffect(() => {
-    api
-      .carpetas()
-      .then(setCarpetas)
-      .catch((e: Error) => setError(e.message))
-      .finally(() => setLoading(false))
+    let cancelled = false
+    cargarResumen()
+      .then((r) => {
+        if (cancelled) return
+        setResumen(r)
+        setError(null)
+      })
+      .catch((e: Error) => !cancelled && setError(e.message))
+    return () => {
+      cancelled = true
+    }
+  }, [intento])
+
+  const hayEnCurso = (resumen?.procesando ?? 0) > 0
+  useEffect(() => {
+    if (!hayEnCurso) return
+    const id = setInterval(() => {
+      if (document.visibilityState !== 'visible') return
+      cargarResumen()
+        .then(setResumen)
+        .catch(() => undefined)
+    }, POLL_MS)
+    return () => clearInterval(id)
+  }, [hayEnCurso])
+
+  const reintentar = useCallback(() => {
+    setError(null)
+    setIntento((n) => n + 1)
   }, [])
 
-  const stats = useMemo(
-    () => ({
-      total: carpetas.length,
-      completadas: carpetas.filter((c) => c.estado === 'COMPLETADA').length,
-      procesando: carpetas.filter((c) => c.estado === 'PROCESANDO').length,
-      errores: carpetas.filter((c) => c.estado === 'ERROR').length,
-    }),
-    [carpetas],
-  )
+  const loading = resumen === null && !error
+  const stats = resumen ?? { total: 0, completadas: 0, procesando: 0, errores: 0, recientes: [] }
+  const recientes = stats.recientes
 
   const kpis = [
     { label: 'Total casos', value: stats.total, icon: FolderKanban, color: 'text-foreground' },
@@ -52,19 +93,15 @@ export function DashboardPage() {
     },
   ]
 
-  const recientes = carpetas.slice(0, 5)
-
   return (
-    <div className="mx-auto max-w-7xl px-6 py-8">
+    <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8">
       <div className="mb-6">
         <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
         <p className="text-sm text-muted-foreground">Resumen general de la operación.</p>
       </div>
 
       {error ? (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
-          {error}
-        </div>
+        <ErrorState message={error} onRetry={reintentar} />
       ) : (
         <>
           <div className="mb-8 grid grid-cols-2 gap-4 sm:grid-cols-4">
@@ -86,59 +123,39 @@ export function DashboardPage() {
           </div>
 
           <Card>
-            <CardHeader>
+            <CardHeader className="flex-row items-center justify-between space-y-0">
               <CardTitle className="text-base">Casos recientes</CardTitle>
+              <Link to="/casos" className="text-xs font-medium text-primary hover:underline">
+                Ver todos →
+              </Link>
             </CardHeader>
             <CardContent className="p-0">
-              <table className="w-full text-sm">
-                <thead className="border-b bg-muted/40">
-                  <tr>
-                    <th className="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      Caso
-                    </th>
-                    <th className="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      Asunto
-                    </th>
-                    <th className="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      Estado
-                    </th>
-                    <th className="px-4 py-2.5 text-right text-xs font-medium uppercase tracking-wide text-muted-foreground" />
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {loading ? (
-                    <tr>
-                      <td colSpan={4} className="px-4 py-12 text-center text-muted-foreground">
-                        Cargando casos...
-                      </td>
-                    </tr>
-                  ) : recientes.length === 0 ? (
-                    <tr>
-                      <td colSpan={4} className="px-4 py-12 text-center text-muted-foreground">
-                        No hay casos todavía.
-                      </td>
-                    </tr>
-                  ) : (
-                    recientes.map((c) => (
-                      <tr key={c.id} className="hover:bg-muted/30">
-                        <td className="px-4 py-3 font-mono text-xs">{c.caso_id}</td>
-                        <td className="px-4 py-3 text-muted-foreground">{c.email_asunto}</td>
-                        <td className="px-4 py-3">
-                          <StatusBadge estado={c.estado} />
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          <Link
-                            to={`/casos/${c.id}`}
-                            className="text-xs font-medium text-primary hover:underline"
-                          >
-                            Ver detalle →
-                          </Link>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+              {loading ? (
+                <p className="px-4 py-12 text-center text-sm text-muted-foreground">Cargando casos...</p>
+              ) : recientes.length === 0 ? (
+                <EmptyState
+                  icon={FolderOpen}
+                  title="Aún no hay casos"
+                  description="Los casos aparecen cuando llega un correo con la documentación del siniestro."
+                />
+              ) : (
+                <ul className="divide-y">
+                  {recientes.map((c) => (
+                    <li key={c.id}>
+                      <Link
+                        to={`/casos/${c.id}`}
+                        className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-muted/30 active:bg-muted/50"
+                      >
+                        <div className="min-w-0">
+                          <p className="font-mono text-xs font-semibold">{c.caso_id}</p>
+                          <p className="truncate text-sm text-muted-foreground">{c.email_asunto}</p>
+                        </div>
+                        <StatusBadge estado={c.estado} />
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </CardContent>
           </Card>
         </>

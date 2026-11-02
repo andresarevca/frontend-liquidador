@@ -5,6 +5,8 @@ import type {
   DocumentoConCarpeta,
   FuentesCorpus,
   IndexarPdfResponse,
+  ListParams,
+  Page,
   ResultadoIA,
   SubirDocumentosResponse,
   UserProfile,
@@ -44,6 +46,30 @@ function authHeaders(extra?: HeadersInit): Headers {
   return headers
 }
 
+// El backend devuelve errores como JSON de DRF ({"detail": "..."} o {"campo": ["..."]}).
+// Los convertimos a una frase legible en lugar de mostrar el cuerpo crudo.
+async function errorMessage(res: Response): Promise<string> {
+  const generico = `Error ${res.status}${res.statusText ? ` (${res.statusText})` : ''}. Intenta nuevamente.`
+  const text = await res.text().catch(() => '')
+  if (!text) return generico
+  try {
+    const data = JSON.parse(text) as unknown
+    const partes: string[] = []
+    const recolectar = (v: unknown, campo?: string) => {
+      if (typeof v === 'string') {
+        const etiqueta = campo && campo !== 'detail' && campo !== 'non_field_errors' ? campo.replace(/_/g, ' ') : ''
+        partes.push(etiqueta ? `${etiqueta}: ${v}` : v)
+      } else if (Array.isArray(v)) v.forEach((x) => recolectar(x, campo))
+      else if (v && typeof v === 'object')
+        Object.entries(v as Record<string, unknown>).forEach(([k, x]) => recolectar(x, k))
+    }
+    recolectar(data)
+    return partes.length ? partes.join(' ') : generico
+  } catch {
+    return text.trimStart().startsWith('<') || text.length > 300 ? generico : text
+  }
+}
+
 async function request<T>(path: string, options?: RequestInit, _retried = false): Promise<T> {
   const res = await fetch(`/api${path}`, { ...options, headers: authHeaders(options?.headers) })
 
@@ -56,8 +82,7 @@ async function request<T>(path: string, options?: RequestInit, _retried = false)
   }
 
   if (!res.ok) {
-    const text = await res.text().catch(() => '')
-    throw new Error(text || `${res.status} ${res.statusText}`)
+    throw new Error(await errorMessage(res))
   }
   return res.json() as Promise<T>
 }
@@ -78,24 +103,22 @@ async function requestUpload<T>(path: string, formData: FormData, _retried = fal
   }
 
   if (!res.ok) {
-    const text = await res.text().catch(() => '')
-    throw new Error(text || `${res.status} ${res.statusText}`)
+    throw new Error(await errorMessage(res))
   }
   return res.json() as Promise<T>
 }
 
-async function requestList<T>(path: string): Promise<T[]> {
-  const data = await request<T[] | { results: T[]; next: string | null }>(path)
-  if (Array.isArray(data)) return data
+function withQuery(path: string, params: Record<string, string | number | undefined | null> = {}) {
+  const q = new URLSearchParams()
+  Object.entries(params).forEach(([k, v]) => {
+    if (v !== undefined && v !== null && v !== '') q.set(k, String(v))
+  })
+  const qs = q.toString()
+  return qs ? `${path}${path.includes('?') ? '&' : '?'}${qs}` : path
+}
 
-  const results = [...data.results]
-  let next = data.next
-  while (next) {
-    const page = await request<{ results: T[]; next: string | null }>(next.replace(/^.*\/api/, ''))
-    results.push(...page.results)
-    next = page.next
-  }
-  return results
+function requestPage<T>(path: string, params?: ListParams) {
+  return request<Page<T>>(withQuery(path, { ...params }))
 }
 
 async function authenticatedDownload(
@@ -114,8 +137,7 @@ async function authenticatedDownload(
   }
 
   if (!res.ok) {
-    const text = await res.text().catch(() => '')
-    throw new Error(text || `${res.status} ${res.statusText}`)
+    throw new Error(await errorMessage(res))
   }
 
   const disposition = res.headers.get('Content-Disposition') ?? ''
@@ -124,7 +146,7 @@ async function authenticatedDownload(
 }
 
 export const api = {
-  carpetas: () => requestList<Carpeta>('/carpetas/'),
+  carpetasPage: (params?: ListParams) => requestPage<Carpeta>('/carpetas/', params),
   carpeta: (id: string) => request<CarpetaDetalle>(`/carpetas/${id}/`),
   dictamen: (id: string) => request<ResultadoIA>(`/carpetas/${id}/dictamen/`),
   reprocesar: (id: string) =>
@@ -136,7 +158,7 @@ export const api = {
   },
   preinforme: (id: string) =>
     authenticatedDownload(`/carpetas/${id}/preinforme/`, `preinforme-${id}.docx`),
-  documentos: () => requestList<DocumentoConCarpeta>('/documentos/'),
+  documentosPage: (params?: ListParams) => requestPage<DocumentoConCarpeta>('/documentos/', params),
 
   corpusBuscar: (q: string, municipio?: string, n = 6) => {
     const params = new URLSearchParams({ q, n: String(n) })

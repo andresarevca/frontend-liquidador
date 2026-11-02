@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { ChevronLeft, Upload } from 'lucide-react'
+import { ChevronLeft, FileText, Upload } from 'lucide-react'
 
 import { api } from '@/api/client'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { EmptyState } from '@/components/EmptyState'
+import { ErrorState } from '@/components/ErrorState'
 import { StatusBadge } from '@/components/StatusBadge'
 import {
   ClasificacionPanel,
@@ -88,20 +90,53 @@ export function CarpetaDetailPage() {
   const [subiendo, setSubiendo] = useState(false)
   const [verJson, setVerJson] = useState<Partial<Record<'A' | 'B' | 'C', boolean>>>({})
 
-  const load = useCallback(() => {
-    if (!id) return
-    setLoading(true)
-    setError(null)
-    api
-      .carpeta(id)
-      .then(setCarpeta)
-      .catch((e: Error) => setError(e.message))
-      .finally(() => setLoading(false))
-  }, [id])
+  const estadoRef = useRef<CarpetaDetalle['estado'] | undefined>(undefined)
+
+  // `silent` refresca en segundo plano: sin spinner de página completa y sin pisar la vista con un error transitorio.
+  const load = useCallback(
+    (silent = false) => {
+      if (!id) return
+      if (!silent) {
+        setLoading(true)
+        setError(null)
+      }
+      api
+        .carpeta(id)
+        .then((next) => {
+          const prev = estadoRef.current
+          estadoRef.current = next.estado
+          if (silent && (prev === 'PROCESANDO' || prev === 'RECIBIDA')) {
+            if (next.estado === 'COMPLETADA') {
+              setFeedback({ msg: 'El procesamiento terminó. Los resultados ya están disponibles.', ok: true })
+            } else if (next.estado === 'ERROR') {
+              setFeedback({ msg: 'El procesamiento terminó con un error. Revisa el detalle más abajo.', ok: false })
+            }
+          }
+          setCarpeta(next)
+        })
+        .catch((e: Error) => {
+          if (!silent) setError(e.message)
+        })
+        .finally(() => {
+          if (!silent) setLoading(false)
+        })
+    },
+    [id],
+  )
 
   useEffect(() => {
     load()
   }, [load])
+
+  // Mientras el pipeline corre, refrescamos solos cada pocos segundos.
+  const enProceso = carpeta?.estado === 'PROCESANDO' || carpeta?.estado === 'RECIBIDA'
+  useEffect(() => {
+    if (!enProceso) return
+    const timer = setInterval(() => {
+      if (document.visibilityState === 'visible') load(true)
+    }, 5000)
+    return () => clearInterval(timer)
+  }, [enProceso, load])
 
   const handleReprocesar = async () => {
     if (!id) return
@@ -112,7 +147,7 @@ export function CarpetaDetailPage() {
       setFeedback({ msg: res.detail, ok: true })
       setTimeout(() => {
         setFeedback(null)
-        load()
+        load(true)
       }, 2500)
     } catch (e: unknown) {
       setFeedback({ msg: (e as Error).message, ok: false })
@@ -134,7 +169,7 @@ export function CarpetaDetailPage() {
       const rechazo = res.rechazados.length
         ? ` Ignorados por formato no soportado: ${res.rechazados.join(', ')}.`
         : ''
-      setFeedback({ msg: `${subidos}${rechazo} Podés reprocesar el pipeline para incluirlos.`, ok: true })
+      setFeedback({ msg: `${subidos}${rechazo} Puedes reprocesar el pipeline para incluirlos.`, ok: true })
       load()
     } catch (e: unknown) {
       setFeedback({ msg: (e as Error).message, ok: false })
@@ -172,9 +207,12 @@ export function CarpetaDetailPage() {
 
   if (error) {
     return (
-      <div className="flex min-h-[60vh] items-center justify-center px-6">
-        <div className="max-w-md rounded-lg border border-red-200 bg-red-50 p-6 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
-          {error}
+      <div className="mx-auto flex min-h-[60vh] max-w-xl items-center px-4">
+        <div className="w-full">
+          <ErrorState title="No se pudo cargar el caso" message={error} onRetry={() => load()} />
+          <Link to="/casos" className="mt-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+            <ChevronLeft className="h-4 w-4" /> Volver a Casos
+          </Link>
         </div>
       </div>
     )
@@ -191,7 +229,7 @@ export function CarpetaDetailPage() {
     : 0
 
   return (
-    <div className="mx-auto max-w-6xl px-6 py-8">
+    <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
       <div className="mb-4 flex items-center gap-2 text-sm">
         <Link to="/casos" className="flex items-center gap-1 text-muted-foreground hover:text-foreground">
           <ChevronLeft className="h-4 w-4" /> Casos
@@ -202,14 +240,14 @@ export function CarpetaDetailPage() {
 
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <div className="mb-1 flex items-center gap-3">
-            <h1 className="font-mono text-2xl font-bold">{carpeta.caso_id}</h1>
+          <div className="mb-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+            <h1 className="break-all font-mono text-xl font-bold sm:text-2xl">{carpeta.caso_id}</h1>
             <StatusBadge estado={carpeta.estado} />
           </div>
           <p className="text-sm text-muted-foreground">{carpeta.email_asunto}</p>
         </div>
-        <div className="flex shrink-0 flex-col items-end gap-1.5">
-          <div className="flex gap-2">
+        <div className="flex shrink-0 flex-col gap-1.5 sm:items-end">
+          <div className="flex flex-wrap gap-2">
             <Button
               variant={pendientesReproceso > 0 ? 'default' : 'outline'}
               onClick={handleReprocesar}
@@ -261,7 +299,7 @@ export function CarpetaDetailPage() {
       )}
 
       <Card className="mb-6">
-        <CardContent className="grid grid-cols-2 gap-4 p-5 text-sm sm:grid-cols-4">
+        <CardContent className="grid grid-cols-1 gap-4 p-4 min-[420px]:grid-cols-2 sm:p-5 text-sm sm:grid-cols-4">
           <div>
             <p className="mb-1 text-xs uppercase tracking-wide text-muted-foreground">Remitente</p>
             <p className="truncate" title={carpeta.email_remitente}>
@@ -284,7 +322,7 @@ export function CarpetaDetailPage() {
       </Card>
 
       <Tabs defaultValue="documentos">
-        <TabsList>
+        <TabsList className="max-w-full justify-start overflow-x-auto">
           <TabsTrigger value="documentos">Documentos ({carpeta.documentos.length})</TabsTrigger>
           <TabsTrigger value="A" disabled={!by.A}>
             Clasificación
@@ -299,11 +337,11 @@ export function CarpetaDetailPage() {
 
         <TabsContent value="documentos" className="space-y-6">
           <div>
-            <div className="mb-3 flex items-center justify-between gap-3">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
               <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 Archivos recibidos
               </h3>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <input
                   type="file"
                   multiple
@@ -336,9 +374,32 @@ export function CarpetaDetailPage() {
               </div>
             </div>
             {carpeta.documentos.length === 0 ? (
-              <p className="py-10 text-center text-sm text-muted-foreground">No hay documentos.</p>
+              <Card>
+                <EmptyState
+                  icon={FileText}
+                  title="Este caso aún no tiene documentos"
+                  description="Sube los archivos del siniestro para poder procesarlos."
+                  action={
+                    <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
+                      Elegir archivos
+                    </Button>
+                  }
+                />
+              </Card>
             ) : (
-              <Card className="overflow-hidden">
+              <>
+              <ul className="space-y-3 md:hidden">
+                {carpeta.documentos.map((d) => (
+                  <li key={d.id} className="rounded-lg border bg-card p-4 shadow-sm">
+                    <p className="break-all text-sm font-medium">{d.nombre_archivo}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {d.tipo_doc || 'Sin clasificar'} · <span className="uppercase">{d.formato}</span> ·{' '}
+                      {formatDateTime(d.subido_en)}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+              <Card className="hidden overflow-x-auto md:block">
                 <table className="w-full text-sm">
                   <thead className="border-b bg-muted/40">
                     <tr>
@@ -368,6 +429,7 @@ export function CarpetaDetailPage() {
                   </tbody>
                 </table>
               </Card>
+              </>
             )}
           </div>
 
@@ -376,14 +438,14 @@ export function CarpetaDetailPage() {
               <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 Documentación complementaria
               </h3>
-              <Card className="overflow-hidden">
+              <Card className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="border-b bg-muted/40">
                     <tr>
                       <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
                         Documento esperado
                       </th>
-                      <th className="w-40 px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      <th className="w-32 px-4 py-3 sm:w-40 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
                         Estado
                       </th>
                     </tr>
