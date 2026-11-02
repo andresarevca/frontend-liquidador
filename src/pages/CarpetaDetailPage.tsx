@@ -322,7 +322,7 @@ export function CarpetaDetailPage() {
       </Card>
 
       <Tabs defaultValue="documentos">
-        <TabsList className="max-w-full justify-start overflow-x-auto">
+        <TabsList className="max-w-full justify-start overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <TabsTrigger value="documentos">Documentos ({carpeta.documentos.length})</TabsTrigger>
           <TabsTrigger value="A" disabled={!by.A}>
             Clasificación
