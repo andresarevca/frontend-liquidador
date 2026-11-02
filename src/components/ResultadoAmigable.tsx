@@ -184,7 +184,7 @@ const BADGE_TONES: Record<BadgeTone, string> = {
 
 function Badge({ children, tone = 'neutral' }: { children: React.ReactNode; tone?: BadgeTone }) {
   return (
-    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${BADGE_TONES[tone]}`}>
+    <span className={`inline-flex items-center whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ${BADGE_TONES[tone]}`}>
       {children}
     </span>
   )
@@ -192,9 +192,9 @@ function Badge({ children, tone = 'neutral' }: { children: React.ReactNode; tone
 
 function Stat({ label, value }: { label: string; value: string | number | null | undefined }) {
   return (
-    <div>
+    <div className="min-w-0">
       <p className="text-xs uppercase tracking-wide text-muted-foreground">{label}</p>
-      <p className="font-medium">{value === null || value === undefined || value === '' ? '—' : value}</p>
+      <p className="break-words font-medium">{value === null || value === undefined || value === '' ? '—' : value}</p>
     </div>
   )
 }
@@ -258,14 +258,16 @@ export function ClasificacionPanel({ resultado }: { resultado: unknown }) {
         {fueraDeCaso > 0 && <Badge tone="danger">{fueraDeCaso} fuera del caso</Badge>}
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {items.map((item, i) => (
-          <Card key={i} className="p-4">
-            <div className="mb-2 flex items-start justify-between gap-2">
-              <p className="truncate text-sm font-medium" title={item.archivo}>
+          <Card key={i} className="min-w-0 p-4">
+            <div className="mb-2 flex flex-col gap-1.5 sm:flex-row sm:items-start sm:justify-between sm:gap-2">
+              <p className="min-w-0 flex-1 break-all text-sm font-medium sm:truncate" title={item.archivo}>
                 {item.archivo}
               </p>
-              <Badge tone="info">{tipoDocLabel(item.tipo_doc)}</Badge>
+              <span className="shrink-0 self-start">
+                <Badge tone="info">{tipoDocLabel(item.tipo_doc)}</Badge>
+              </span>
             </div>
             {(item.legible === false || item.pertenece_al_caso === false) && (
               <div className="mb-2 flex flex-wrap items-center gap-1.5">
@@ -310,7 +312,7 @@ export function ExtraccionPanel({ resultado }: { resultado: unknown }) {
       {siniestro && (
         <Card className="p-4">
           <SectionTitle>El siniestro</SectionTitle>
-          <div className="grid gap-3 text-sm sm:grid-cols-2">
+          <div className="grid grid-cols-2 gap-3 text-sm">
             <Stat label="Fecha y hora" value={formatDateTimeSafe(siniestro.fecha_hora)} />
             <Stat label="Municipio" value={siniestro.municipio} />
             <Stat label="Tipo de vía" value={siniestro.tipo_via ? humanize(siniestro.tipo_via) : null} />
@@ -333,9 +335,9 @@ export function ExtraccionPanel({ resultado }: { resultado: unknown }) {
       {vehiculos && vehiculos.length > 0 && (
         <div>
           <SectionTitle>Vehículos involucrados</SectionTitle>
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {vehiculos.map((v, i) => (
-              <Card key={i} className="p-4">
+              <Card key={i} className="min-w-0 p-4">
                 <div className="mb-2 flex items-center justify-between gap-2">
                   <p className="text-sm font-medium">
                     {[v.marca, v.modelo].filter(Boolean).join(' ') || 'Vehículo'}
@@ -365,7 +367,7 @@ export function ExtraccionPanel({ resultado }: { resultado: unknown }) {
       {poliza && (
         <Card className="p-4">
           <SectionTitle>Póliza</SectionTitle>
-          <div className="grid gap-3 text-sm sm:grid-cols-3">
+          <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
             <Stat label="Aseguradora" value={poliza.aseguradora} />
             <Stat label="Número" value={poliza.numero} />
             <Stat label="Cobertura" value={poliza.cobertura_tipo ? humanize(poliza.cobertura_tipo) : null} />
