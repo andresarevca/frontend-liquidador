@@ -46,7 +46,7 @@ export function AuthPage() {
             <ShieldCheck className="h-5 w-5" />
           </div>
           <h1 className="text-xl font-semibold">Liquidador</h1>
-          <p className="text-sm text-muted-foreground">Ingresá a tu panel de gestión</p>
+          <p className="text-sm text-muted-foreground">Ingresa a tu panel de gestión</p>
         </div>
 
         <form onSubmit={onSubmit} className="space-y-4 rounded-xl border bg-card p-6 shadow-sm">

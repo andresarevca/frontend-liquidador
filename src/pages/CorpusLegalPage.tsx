@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 
 import { api } from '@/api/client'
+import { ErrorState } from '@/components/ErrorState'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -40,7 +41,7 @@ export function CorpusLegalPage() {
   const handleBuscar = async (e: React.FormEvent) => {
     e.preventDefault()
     if (query.trim().length < 3) {
-      setBusquedaError('Ingresá al menos 3 caracteres para buscar.')
+      setBusquedaError('Ingresa al menos 3 caracteres para buscar.')
       return
     }
     setBuscando(true)
@@ -71,7 +72,7 @@ export function CorpusLegalPage() {
     e.preventDefault()
     const archivo = fileInputRef.current?.files?.[0]
     if (!archivo) {
-      setSubidaError('Seleccioná un archivo PDF o DOCX.')
+      setSubidaError('Selecciona un archivo PDF o DOCX.')
       return
     }
     setSubiendo(true)
@@ -90,7 +91,7 @@ export function CorpusLegalPage() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl px-6 py-8">
+    <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8">
       <div className="mb-6">
         <h1 className="text-2xl font-semibold tracking-tight">Corpus Legal</h1>
         <p className="text-sm text-muted-foreground">
@@ -100,7 +101,9 @@ export function CorpusLegalPage() {
 
       <div className="mb-6 flex flex-wrap items-center gap-4 text-sm">
         {fuentesError ? (
-          <span className="text-red-600 dark:text-red-400">{fuentesError}</span>
+          <div className="w-full">
+            <ErrorState message={fuentesError} onRetry={cargarFuentes} />
+          </div>
         ) : fuentes ? (
           <>
             <span>
@@ -129,13 +132,13 @@ export function CorpusLegalPage() {
                 placeholder="Ej: señal de PARE responsabilidad"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                className="min-w-[240px] flex-1"
+                className="min-w-0 flex-1 basis-full sm:basis-[240px]"
               />
               <Input
                 placeholder="Municipio (opcional)"
                 value={municipioBusqueda}
                 onChange={(e) => setMunicipioBusqueda(e.target.value)}
-                className="w-48"
+                className="w-full sm:w-48"
               />
               <Button type="submit" disabled={buscando}>
                 {buscando ? 'Buscando...' : 'Buscar'}
@@ -150,7 +153,7 @@ export function CorpusLegalPage() {
 
             {resultados.length === 0 ? (
               <p className="px-1 py-8 text-center text-sm text-muted-foreground">
-                {buscando ? 'Buscando...' : 'Sin resultados todavía. Realizá una búsqueda.'}
+                {buscando ? 'Buscando...' : 'Sin resultados todavía. Realiza una búsqueda.'}
               </p>
             ) : (
               <ul className="space-y-3">

@@ -64,6 +64,74 @@ function humanize(value: string | null | undefined): string {
     .join(' ')
 }
 
+// La IA a veces devuelve rutas técnicas ("vehiculos[0].matricula", "poliza.vigencia_hasta")
+// como nombre de campo o dentro de textos libres. Las traducimos a lenguaje natural.
+const CAMPO_LABELS: Record<string, string> = {
+  siniestro: 'siniestro',
+  vehiculos: 'vehículo',
+  poliza: 'póliza',
+  documentacion: 'documentación',
+  monto_danios: 'monto de daños',
+  fecha_hora: 'fecha y hora',
+  direccion_aproximada: 'dirección',
+  tipo_via: 'tipo de vía',
+  condicion_climatica: 'clima',
+  descripcion_dinamica: 'descripción del hecho',
+  rol: 'rol',
+  año: 'año',
+  matricula: 'matrícula',
+  conductor_nombre: 'nombre del conductor',
+  conductor_ci: 'CI del conductor',
+  licencia_numero: 'número de licencia',
+  licencia_categoria: 'categoría de licencia',
+  danios_descripcion: 'descripción de daños',
+  numero: 'número',
+  vigencia_desde: 'vigencia desde',
+  vigencia_hasta: 'vigencia hasta',
+  cobertura_tipo: 'tipo de cobertura',
+  suma_asegurada: 'suma asegurada',
+  estimacion_pericia: 'estimación de la pericia',
+  moneda_original: 'moneda',
+  poliza_presente: 'póliza',
+  denuncia_policial_presente: 'denuncia policial',
+  denuncia_administrativa_presente: 'denuncia administrativa',
+  pericia_tecnica_presente: 'pericia técnica',
+  cedula_verde_presente: 'cédula verde',
+  licencia_conductor_presente: 'licencia del conductor',
+  fotos_evento_cantidad: 'fotos del evento',
+}
+
+function labelSegmento(seg: string): string {
+  const m = seg.match(/^([^[\]]+)(?:\[(\d+)\])?$/)
+  const nombre = m?.[1] ?? seg
+  const idx = m?.[2] !== undefined ? Number(m[2]) + 1 : null
+  const base = CAMPO_LABELS[nombre] ?? nombre.replace(/_/g, ' ')
+  return idx !== null ? `${base} ${idx}` : base
+}
+
+const RUTA_TECNICA =
+  /\b(?:siniestro|vehiculos|poliza|documentacion|monto_danios|calidad_extraccion|conflictos|dictamen)(?:\[\d+\])?(?:\.[a-zñ_]+(?:\[\d+\])?)+/gi
+
+// Convierte "vehiculos[0].matricula" en "Matrícula (vehículo 1)".
+function humanizeCampo(path: string | null | undefined): string {
+  if (!path) return '—'
+  const partes = path.split('.')
+  if (partes.length === 1) {
+    const solo = labelSegmento(partes[0])
+    return solo.charAt(0).toUpperCase() + solo.slice(1)
+  }
+  const hoja = labelSegmento(partes[partes.length - 1])
+  const contexto = partes.slice(0, -1).map(labelSegmento).join(' · ')
+  const titulo = hoja.charAt(0).toUpperCase() + hoja.slice(1)
+  return `${titulo} (${contexto})`
+}
+
+// Reemplaza rutas técnicas embebidas en un texto libre.
+function limpiarTextoTecnico(texto: string | null | undefined): string {
+  if (!texto) return ''
+  return texto.replace(RUTA_TECNICA, (m) => humanizeCampo(m).toLowerCase())
+}
+
 const TIPO_DOC_LABELS: Record<string, string> = {
   DENUNCIA_ADMINISTRATIVA: 'Denuncia administrativa',
   DENUNCIA_POLICIAL: 'Denuncia policial',
@@ -317,8 +385,8 @@ export function ExtraccionPanel({ resultado }: { resultado: unknown }) {
                 key={i}
                 className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm dark:border-amber-900 dark:bg-amber-950"
               >
-                <p className="font-medium text-amber-800 dark:text-amber-300">{humanize(c.campo)}</p>
-                <p className="text-xs text-amber-700 dark:text-amber-400">{c.descripcion}</p>
+                <p className="font-medium text-amber-800 dark:text-amber-300">{humanizeCampo(c.campo)}</p>
+                <p className="text-xs text-amber-700 dark:text-amber-400">{limpiarTextoTecnico(c.descripcion)}</p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   "{c.valor_doc_1}" vs. "{c.valor_doc_2}"
                 </p>
@@ -335,7 +403,7 @@ export function ExtraccionPanel({ resultado }: { resultado: unknown }) {
           {calidad_extraccion.campos_faltantes_criticos?.length > 0 && (
             <ul className="mt-3 list-disc space-y-1 pl-5 text-xs text-muted-foreground">
               {calidad_extraccion.campos_faltantes_criticos.map((c, i) => (
-                <li key={i}>{humanize(c)}</li>
+                <li key={i}>{humanizeCampo(c)}</li>
               ))}
             </ul>
           )}
@@ -452,7 +520,7 @@ export function DictamenPanel({ resultado }: { resultado: unknown }) {
         )}
 
         {d.razon_cobertura && (
-          <p className="mt-3 text-sm leading-relaxed text-foreground/90">{d.razon_cobertura}</p>
+          <p className="mt-3 text-sm leading-relaxed text-foreground/90">{limpiarTextoTecnico(d.razon_cobertura)}</p>
         )}
       </Card>
 
@@ -468,7 +536,7 @@ export function DictamenPanel({ resultado }: { resultado: unknown }) {
                     {[inf.articulo_ley_5016, inf.articulo_ordenanza].filter(Boolean).join(' · ')}
                   </span>
                 </div>
-                <p>{inf.descripcion_infraccion}</p>
+                <p>{limpiarTextoTecnico(inf.descripcion_infraccion)}</p>
               </div>
             ))}
           </div>
@@ -482,7 +550,7 @@ export function DictamenPanel({ resultado }: { resultado: unknown }) {
             {d.alertas_liquidador.map((a, i) => (
               <li key={i} className="flex gap-2">
                 <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-red-500" />
-                <span>{a}</span>
+                <span>{limpiarTextoTecnico(a)}</span>
               </li>
             ))}
           </ul>
@@ -496,14 +564,14 @@ export function DictamenPanel({ resultado }: { resultado: unknown }) {
             {d.datos_faltantes_para_dictamen.map((a, i) => (
               <li key={i} className="flex gap-2">
                 <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground/40" />
-                <span>{a}</span>
+                <span>{limpiarTextoTecnico(a)}</span>
               </li>
             ))}
           </ul>
         </div>
       )}
 
-      {d.analisis_narrativo && <AnalisisNarrativo texto={d.analisis_narrativo} />}
+      {d.analisis_narrativo && <AnalisisNarrativo texto={limpiarTextoTecnico(d.analisis_narrativo)} />}
     </div>
   )
 }
